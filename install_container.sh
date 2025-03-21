@@ -102,21 +102,70 @@ uninstall_containerd() {
     echo -e "\e[32mcontainerd已成功卸载\e[0m"
 }
 
-# 修改主菜单选项
+# 修改主菜单结构，使用二级菜单
 main_menu() {
     while true; do
         system_info
+        PS3="请选择管理组件（输入数字选择）: "
+        options=("管理Docker" "管理Kubernetes" "管理containerd" "退出")
+        select opt in "${options[@]}"; do
+            case $opt in
+                "管理Docker") docker_menu ;;
+                "管理Kubernetes") kubernetes_menu ;;
+                "管理containerd") containerd_menu ;;
+                "退出") exit ;;
+                *) echo "无效选项，请重新选择";;
+            esac
+            break
+        done
+    done
+}
+
+# 新增组件专用二级菜单
+docker_menu() {
+    while true; do
+        echo -e "\e[34mDocker管理菜单\e[0m"
         PS3="请选择操作（输入数字选择）: "
-        options=("安装Docker" "卸载Docker" "安装Kubernetes" "卸载Kubernetes" "安装containerd" "卸载containerd" "退出")
+        options=("安装Docker" "卸载Docker" "返回上级菜单")
         select opt in "${options[@]}"; do
             case $opt in
                 "安装Docker") install_docker ;;
                 "卸载Docker") uninstall_docker ;;
+                "返回上级菜单") return ;;
+                *) echo "无效选项，请重新选择";;
+            esac
+            break
+        done
+    done
+}
+
+kubernetes_menu() {
+    while true; do
+        echo -e "\e[34mKubernetes管理菜单\e[0m"
+        PS3="请选择操作（输入数字选择）: "
+        options=("安装Kubernetes" "卸载Kubernetes" "返回上级菜单")
+        select opt in "${options[@]}"; do
+            case $opt in
                 "安装Kubernetes") install_kubernetes ;;
                 "卸载Kubernetes") uninstall_kubernetes ;;
+                "返回上级菜单") return ;;
+                *) echo "无效选项，请重新选择";;
+            esac
+            break
+        done
+    done
+}
+
+containerd_menu() {
+    while true; do
+        echo -e "\e[34mcontainerd管理菜单\e[0m"
+        PS3="请选择操作（输入数字选择）: "
+        options=("安装containerd" "卸载containerd" "返回上级菜单")
+        select opt in "${options[@]}"; do
+            case $opt in
                 "安装containerd") install_containerd ;;
                 "卸载containerd") uninstall_containerd ;;
-                "退出") exit ;;
+                "返回上级菜单") return ;;
                 *) echo "无效选项，请重新选择";;
             esac
             break
@@ -148,7 +197,16 @@ install_docker() {
 
         read -p "是否安装指定版本？(Y/n): " choice
         if [[ $choice =~ [Yy] ]]; then
-            read -p "请输入Docker版本号（从上面列表选择）: " version
+            echo "可用的Docker版本："
+            versions=$(yum list available docker-ce --quiet | grep docker-ce | awk '{print $2}' | sort -rV)
+            select ver in $versions; do
+                if [ -n "$ver" ]; then
+                    version=$ver
+                    break
+                else
+                    echo "无效选择，请重新选择"
+                fi
+            done
             sudo yum install -y docker-ce-$version docker-ce-cli-$version containerd.io
         else
             sudo yum install -y docker-ce docker-ce-cli containerd.io
@@ -161,7 +219,16 @@ install_docker() {
         sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
         read -p "是否安装指定版本？(Y/n): " choice
         if [[ $choice =~ [Yy] ]]; then
-            read -p "请输入Docker版本号: " version
+            echo "可用的Docker版本："
+            versions=$(apt list --installed 2>/dev/null | grep docker-ce | awk '{print $2}' | sort -rV)
+            select ver in $versions; do
+                if [ -n "$ver" ]; then
+                    version=${ver%%/*}
+                    break
+                else
+                    echo "无效选择，请重新选择"
+                fi
+            done
             sudo apt-get install -y docker-ce=$version docker-ce-cli=$version containerd.io
         else
             sudo apt-get install -y docker-ce docker-ce-cli containerd.io
