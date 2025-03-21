@@ -290,6 +290,7 @@ EOF
     sudo systemctl enable --now kubelet && echo -e "\e[32mKubernetes组件安装完成\e[0m" || echo -e "\e[31m安装失败，请检查网络\e[0m"
 }
 
+# 修改containerd安装函数，增加仓库配置
 install_containerd() {
     # 新增检测逻辑
     if command -v containerd &> /dev/null; then
@@ -306,7 +307,15 @@ install_containerd() {
         sudo yum install -y containerd.io
     elif [[ $OS == "ubuntu" ]]; then
         echo -e "\e[34m正在Ubuntu系统上安装containerd...\e[0m"
-        sudo apt-get update && sudo apt-get install -y containerd.io
+        sudo apt-get update && sudo apt-get install -y curl gnupg
+        # 添加containerd官方仓库
+        sudo mkdir -m 0755 -p /etc/apt/keyrings
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/containerd.gpg
+        echo \
+        "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/containerd.gpg] https://download.docker.com/linux/ubuntu \
+        $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/containerd.list > /dev/null
+        sudo apt-get update
+        sudo apt-get install -y containerd.io
     else
         echo -e "\e[31m不支持的系统类型\e[0m"
         return 1
