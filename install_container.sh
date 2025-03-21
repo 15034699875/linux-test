@@ -65,16 +65,20 @@ system_info() {
 
 # 主菜单函数
 main_menu() {
-    PS3="请选择要安装的容器软件（输入数字选择）: "
-    options=("Docker" "Kubernetes" "containerd" "退出")
-    select opt in "${options[@]}"; do
-        case $opt in
-            "Docker") install_docker ;;
-            "Kubernetes") install_kubernetes ;;
-            "containerd") install_containerd ;;
-            "退出") exit ;;
-            *) echo "无效选项，请重新选择";;
-        esac
+    while true; do
+        system_info
+        PS3="请选择要安装的容器软件（输入数字选择）: "
+        options=("Docker" "Kubernetes" "containerd" "退出")
+        select opt in "${options[@]}"; do
+            case $opt in
+                "Docker") install_docker ;;
+                "Kubernetes") install_kubernetes ;;
+                "containerd") install_containerd ;;
+                "退出") exit ;;
+                *) echo "无效选项，请重新选择";;
+            esac
+            break
+        done
     done
 }
 
@@ -188,5 +192,4 @@ install_containerd() {
 
 # 主程序入口
 detect_os
-system_info  # 新增系统信息展示
 main_menu
