@@ -63,17 +63,59 @@ system_info() {
     echo "---------------------------------------------"
 }
 
-# 主菜单函数
+# 新增卸载函数
+uninstall_docker() {
+    echo -e "\e[34m正在卸载Docker...\e[0m"
+    if [[ $OS == "centos" || $OS == "rhel" ]]; then
+        sudo systemctl stop docker
+        sudo yum remove -y docker docker-ce docker-ce-cli containerd.io
+    elif [[ $OS == "ubuntu" ]]; then
+        sudo systemctl stop docker
+        sudo apt-get purge -y docker.io docker-ce docker-ce-cli containerd.io
+    fi
+    sudo rm -rf /etc/docker /var/lib/docker
+    sudo systemctl disable docker
+    echo -e "\e[32mDocker已成功卸载\e[0m"
+}
+
+uninstall_kubernetes() {
+    echo -e "\e[34m正在卸载Kubernetes组件...\e[0m"
+    if [[ $OS == "centos" || $OS == "rhel" ]]; then
+        sudo yum remove -y kubelet kubeadm kubectl
+    elif [[ $OS == "ubuntu" ]]; then
+        sudo apt-get purge -y kubelet kubeadm kubectl
+    fi
+    sudo rm -rf /etc/kubernetes
+    echo -e "\e[32mKubernetes组件已成功卸载\e[0m"
+}
+
+uninstall_containerd() {
+    echo -e "\e[34m正在卸载containerd...\e[0m"
+    if [[ $OS == "centos" || $OS == "rhel" ]]; then
+        sudo systemctl stop containerd
+        sudo yum remove -y containerd.io
+    elif [[ $OS == "ubuntu" ]]; then
+        sudo systemctl stop containerd
+        sudo apt-get purge -y containerd.io
+    fi
+    sudo rm -rf /etc/containerd /var/lib/containerd
+    echo -e "\e[32mcontainerd已成功卸载\e[0m"
+}
+
+# 修改主菜单选项
 main_menu() {
     while true; do
         system_info
-        PS3="请选择要安装的容器软件（输入数字选择）: "
-        options=("Docker" "Kubernetes" "containerd" "退出")
+        PS3="请选择操作（输入数字选择）: "
+        options=("安装Docker" "卸载Docker" "安装Kubernetes" "卸载Kubernetes" "安装containerd" "卸载containerd" "退出")
         select opt in "${options[@]}"; do
             case $opt in
-                "Docker") install_docker ;;
-                "Kubernetes") install_kubernetes ;;
-                "containerd") install_containerd ;;
+                "安装Docker") install_docker ;;
+                "卸载Docker") uninstall_docker ;;
+                "安装Kubernetes") install_kubernetes ;;
+                "卸载Kubernetes") uninstall_kubernetes ;;
+                "安装containerd") install_containerd ;;
+                "卸载containerd") uninstall_containerd ;;
                 "退出") exit ;;
                 *) echo "无效选项，请重新选择";;
             esac
@@ -82,8 +124,18 @@ main_menu() {
     done
 }
 
-# Docker安装函数
+# 修改安装函数检测已安装状态
 install_docker() {
+    # 新增检测逻辑
+    if command -v docker &> /dev/null; then
+        echo -e "\e[33m检测到已安装Docker，版本：$(docker --version)\e[0m"
+        read -p "是否要替换现有安装？(Y/n): " choice
+        if [[ ! $choice =~ ^[Yy]$ ]]; then
+            echo "跳过Docker安装"
+            return
+        fi
+    fi
+
     if [[ $OS == "centos" || $OS == "rhel" ]]; then
         echo -e "\e[34m正在CentOS系统上安装Docker...\e[0m"
         # 替换为阿里云源
@@ -135,8 +187,17 @@ EOF
     fi
 }
 
-# Kubernetes安装函数
 install_kubernetes() {
+    # 新增检测逻辑
+    if command -v kubelet &> /dev/null || command -v kubeadm &> /dev/null; then
+        echo -e "\e[33m检测到已安装Kubernetes组件\e[0m"
+        read -p "是否继续安装？(Y/n): " choice
+        if [[ ! $choice =~ ^[Yy]$ ]]; then
+            echo "跳过Kubernetes安装"
+            return
+        fi
+    fi
+
     if [[ $OS == "centos" || $OS == "rhel" ]]; then
         echo -e "\e[34m正在CentOS系统上安装Kubernetes...\e[0m"
         cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
@@ -162,8 +223,17 @@ EOF
     sudo systemctl enable --now kubelet && echo -e "\e[32mKubernetes组件安装完成\e[0m" || echo -e "\e[31m安装失败，请检查网络\e[0m"
 }
 
-# containerd安装函数
 install_containerd() {
+    # 新增检测逻辑
+    if command -v containerd &> /dev/null; then
+        echo -e "\e[33m检测到已安装containerd，版本：$(containerd --version)\e[0m"
+        read -p "是否要替换现有安装？(Y/n): " choice
+        if [[ ! $choice =~ ^[Yy]$ ]]; then
+            echo "跳过containerd安装"
+            return
+        fi
+    fi
+
     if [[ $OS == "centos" || $OS == "rhel" ]]; then
         echo -e "\e[34m正在CentOS系统上安装containerd...\e[0m"
         sudo yum install -y containerd.io
