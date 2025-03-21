@@ -280,9 +280,15 @@ EOF
     elif [[ $OS == "ubuntu" ]]; then
         echo -e "\e[34m正在Ubuntu系统上安装Kubernetes...\e[0m"
         sudo apt-get update && sudo apt-get install -y apt-transport-https
-        curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
-        echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
-        sudo apt-get update && sudo apt-get install -y kubelet kubeadm kubectl
+        curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo tee /etc/apt/keyrings/kubernetes.gpg > /dev/null
+        echo "deb [signed-by=/etc/apt/keyrings/kubernetes.gpg] https://apt.kubernetes.io/ kubernetes-bookworm main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+        sudo apt-get update
+        # 添加仓库验证步骤
+        if ! sudo apt-get update 2>&1 | grep -q 'Hit:1 https://apt.kubernetes.io'; then
+            echo -e "\e[31mKubernetes仓库配置失败，请检查网络\e[0m"
+            return 1
+        fi
+        sudo apt-get install -y kubelet kubeadm kubectl
     else
         echo -e "\e[31m不支持的系统类型\e[0m"
         return 1
