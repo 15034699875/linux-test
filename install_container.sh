@@ -230,7 +230,10 @@ install_docker() {
         fi
     elif [[ $OS == "ubuntu" ]]; then
         echo -e "\e[34m正在Ubuntu系统上安装Docker...\e[0m"
-        # 修改仓库配置方式（解决keyring警告）
+        # 添加清理旧仓库配置
+        sudo rm -f /etc/apt/sources.list.d/docker.list
+        
+        # 修改仓库配置方式
         sudo apt-get update
         sudo apt-get install -y ca-certificates curl
         curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
@@ -238,11 +241,8 @@ install_docker() {
         "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \
         $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-        # 重新更新仓库
-        sudo apt-get update
-        
-        # 修改版本获取逻辑
-        versions=$(apt-cache search '^docker-ce' | awk -F '[ :-]' '{print $3}' | sort -rV | uniq)
+        # 使用madison获取准确版本信息
+        versions=$(apt-cache madison docker-ce | awk '{print $3}' | sort -rV | uniq)
         if [[ -z "$versions" ]]; then
             echo -e "\e[31m无法获取Docker可用版本，请检查网络或仓库配置\e[0m"
             return 1
@@ -260,7 +260,7 @@ install_docker() {
                     echo "无效选择，请重新选择"
                 fi
             done
-            sudo apt-get install -y docker-ce="$version"* docker-ce-cli="$version"* containerd.io
+            sudo apt-get install -y docker-ce="$version" docker-ce-cli="$version" containerd.io
         else
             sudo apt-get install -y docker-ce docker-ce-cli containerd.io
         fi
