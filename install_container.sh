@@ -205,18 +205,20 @@ install_docker() {
         # 替换为阿里云源
         sudo yum-config-manager --add-repo https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
 
-        # 获取可用版本列表
-        versions=$(yum list available docker-ce --quiet | grep docker-ce | awk '{print $2}' | sort -rV)
+        # 修改版本获取逻辑
+        versions=$(yum list available docker-ce --quiet | grep docker-ce-[0-9] | awk '{print $2}' | sort -rV)
+        if [[ -z "$versions" ]]; then
+            echo -e "\e[31m无法获取Docker可用版本，请检查仓库配置\e[0m"
+            return 1
+        fi
         echo "可用的Docker版本："
         echo "$versions"
 
         read -p "是否安装指定版本？(Y/n): " choice
         if [[ $choice =~ [Yy] ]]; then
-            echo "可用的Docker版本："
-            versions=$(yum list available docker-ce --quiet | grep docker-ce | awk '{print $2}' | sort -rV)
             select ver in $versions; do
                 if [ -n "$ver" ]; then
-                    version=$ver
+                    version=${ver#docker-ce-}
                     break
                 else
                     echo "无效选择，请重新选择"
@@ -228,23 +230,37 @@ install_docker() {
         fi
     elif [[ $OS == "ubuntu" ]]; then
         echo -e "\e[34m正在Ubuntu系统上安装Docker...\e[0m"
+        # 修改仓库配置方式（解决keyring警告）
         sudo apt-get update
-        sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
-        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-        sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+        sudo apt-get install -y ca-certificates curl
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+        echo \
+        "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \
+        $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+        # 重新更新仓库
+        sudo apt-get update
+        
+        # 修改版本获取逻辑
+        versions=$(apt-cache search '^docker-ce' | awk -F '[ :-]' '{print $3}' | sort -rV | uniq)
+        if [[ -z "$versions" ]]; then
+            echo -e "\e[31m无法获取Docker可用版本，请检查网络或仓库配置\e[0m"
+            return 1
+        fi
+        echo "可用的Docker版本："
+        echo "$versions"
+
         read -p "是否安装指定版本？(Y/n): " choice
         if [[ $choice =~ [Yy] ]]; then
-            echo "可用的Docker版本："
-            versions=$(apt list --installed 2>/dev/null | grep docker-ce | awk '{print $2}' | sort -rV)
             select ver in $versions; do
                 if [ -n "$ver" ]; then
-                    version=${ver%%/*}
+                    version=$ver
                     break
                 else
                     echo "无效选择，请重新选择"
                 fi
             done
-            sudo apt-get install -y docker-ce=$version docker-ce-cli=$version containerd.io
+            sudo apt-get install -y docker-ce="$version"* docker-ce-cli="$version"* containerd.io
         else
             sudo apt-get install -y docker-ce docker-ce-cli containerd.io
         fi
