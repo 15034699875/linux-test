@@ -315,16 +315,24 @@ EOF
         # 删除所有旧的Kubernetes仓库文件
         sudo rm -f /etc/apt/sources.list.d/kubernetes*.list
         # 修改仓库套接字名称为kubernetes-xenial
-        echo "deb [signed-by=/etc/apt/keyrings/kubernetes.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+        echo "deb [signed-by=/etc/apt/keyrings/kubernetes.gpg] https://apt.kubernetes.io/ kubernetes-ubuntu main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
 
         # 彻底清理Docker旧仓库文件（修复重复配置问题）
-        sudo rm -f /etc/apt/sources.list.d/docker*.list
+        sudo rm -f /etc/apt/sources.list.d/docker*
 
         # 新增仓库配置验证逻辑
         if ! sudo apt-get update 2>&1 | grep -q 'Hit:1 https://apt.kubernetes.io'; then
-            echo -e "\e[31mKubernetes仓库配置失败，请检查网络或仓库名称是否为kubernetes-xenial\e[0m"
+            echo -e "\e[31mKubernetes仓库配置失败，请检查网络或仓库名称是否为kubernetes-ubuntu\e[0m"
             return 1
         fi
+
+        # 新增Docker仓库配置后的验证步骤
+        sudo apt-get update > /dev/null
+        if ! apt-cache policy docker-ce | grep -q 'Candidate:'; then
+            echo -e "\e[31mDocker仓库配置异常，请检查网络或仓库文件\e[0m"
+            return 1
+        fi
+
         sudo apt-get install -y kubelet kubeadm kubectl
     else
         echo -e "\e[31m不支持的系统类型\e[0m"
