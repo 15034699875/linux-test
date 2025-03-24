@@ -315,14 +315,14 @@ EOF
         # 删除所有旧的Kubernetes仓库文件
         sudo rm -f /etc/apt/sources.list.d/kubernetes*.list
         # 修改仓库套接字名称为kubernetes-xenial
-        echo "deb [signed-by=/etc/apt/keyrings/kubernetes.gpg] https://apt.kubernetes.io/ kubernetes-ubuntu main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+        echo "deb [signed-by=/etc/apt/keyrings/kubernetes.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
 
         # 删除所有旧的Kubernetes仓库文件（原代码仅删除部分，需增强清理）
         sudo rm -f /etc/apt/sources.list.d/kubernetes*.list
 
         # 增强仓库验证逻辑，检查仓库是否可用
         if ! sudo apt-get update 2>&1 | grep -q 'https://apt.kubernetes.io .*Hit'; then
-            echo -e "\e[31mKubernetes仓库配置失败，请检查仓库名称是否为kubernetes-ubuntu\e[0m"
+            echo -e "\e[31mKubernetes仓库配置失败，请检查仓库名称是否为kubernetes-xenial\e[0m"
             return 1
         fi
 
