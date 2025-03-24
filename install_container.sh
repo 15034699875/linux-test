@@ -230,7 +230,7 @@ install_docker() {
         fi
     elif [[ $OS == "ubuntu" ]]; then
         echo -e "\e[34m正在Ubuntu系统上安装Docker...\e[0m"
-        # 使用通配符删除所有Docker相关仓库文件
+        # 修正Docker仓库重复配置问题（删除所有旧Docker仓库文件）
         sudo rm -f /etc/apt/sources.list.d/docker*.list
         
         # 修改仓库配置方式
@@ -317,9 +317,9 @@ EOF
         # 修改仓库套接字名称为kubernetes-ubuntu
         echo "deb [signed-by=/etc/apt/keyrings/kubernetes.gpg] https://apt.kubernetes.io/ kubernetes-ubuntu main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
 
-        # 添加仓库配置后的验证步骤
+        # 增加仓库配置后的验证步骤
         if ! sudo apt-get update 2>&1 | grep -q 'Hit:1 https://apt.kubernetes.io'; then
-            echo -e "\e[31mKubernetes仓库配置失败，请检查网络或仓库名称\e[0m"
+            echo -e "\e[31mKubernetes仓库配置失败，请检查网络或仓库名称是否为kubernetes-ubuntu\e[0m"
             return 1
         fi
         sudo apt-get install -y kubelet kubeadm kubectl
