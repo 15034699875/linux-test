@@ -230,7 +230,7 @@ install_docker() {
         fi
     elif [[ $OS == "ubuntu" ]]; then
         echo -e "\e[34m正在Ubuntu系统上安装Docker...\e[0m"
-        # 添加清理旧仓库配置
+        # 新增删除旧仓库配置的逻辑
         sudo rm -f /etc/apt/sources.list.d/docker.list
         
         # 修改仓库配置方式
@@ -312,7 +312,8 @@ EOF
         echo -e "\e[34m正在Ubuntu系统上安装Kubernetes...\e[0m"
         sudo apt-get update && sudo apt-get install -y apt-transport-https
         curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo tee /etc/apt/keyrings/kubernetes.gpg > /dev/null
-        echo "deb [signed-by=/etc/apt/keyrings/kubernetes.gpg] https://apt.kubernetes.io/ kubernetes-jammy main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+        # 修正仓库套接字名称为kubernetes-xenial
+        echo "deb [signed-by=/etc/apt/keyrings/kubernetes.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
 
         # 在添加仓库后增加验证步骤
         if ! sudo apt-get update 2>&1 | grep -q 'Hit:1 https://apt.kubernetes.io'; then
