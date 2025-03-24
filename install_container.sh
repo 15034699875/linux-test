@@ -125,6 +125,11 @@ main_menu() {
 docker_menu() {
     while true; do
         echo -e "\e[34mDocker管理菜单\e[0m"
+        if command -v docker &> /dev/null; then
+            echo "已安装Docker，版本：$(docker --version)"
+        else
+            echo "Docker未安装。"
+        fi
         PS3="请选择操作（输入数字选择）: "
         options=("安装Docker" "卸载Docker" "返回上级菜单")
         select opt in "${options[@]}"; do
@@ -142,6 +147,11 @@ docker_menu() {
 kubernetes_menu() {
     while true; do
         echo -e "\e[34mKubernetes管理菜单\e[0m"
+        if command -v kubeadm &> /dev/null; then
+            echo "已安装Kubernetes组件，kubeadm版本：$(kubeadm version)"
+        else
+            echo "Kubernetes组件未安装。"
+        fi
         PS3="请选择操作（输入数字选择）: "
         options=("安装Kubernetes" "卸载Kubernetes" "返回上级菜单")
         select opt in "${options[@]}"; do
@@ -159,6 +169,11 @@ kubernetes_menu() {
 containerd_menu() {
     while true; do
         echo -e "\e[34mcontainerd管理菜单\e[0m"
+        if command -v containerd &> /dev/null; then
+            echo "已安装containerd，版本：$(containerd --version)"
+        else
+            echo "containerd未安装。"
+        fi
         PS3="请选择操作（输入数字选择）: "
         options=("安装containerd" "卸载containerd" "返回上级菜单")
         select opt in "${options[@]}"; do
@@ -294,6 +309,42 @@ EOF
         return 1
     fi
     sudo systemctl enable --now kubelet && echo -e "\e[32mKubernetes组件安装完成\e[0m" || echo -e "\e[31m安装失败，请检查网络\e[0m"
+
+    if [ $? -eq 0 ]; then
+        # 新增crictl安装检测
+        if ! command -v crictl &> /dev/null; then
+            echo "安装crictl用于检测运行时..."
+            sudo curl -L https://github.com/kubernetes-sigs/cri-tools/releases/download/v1.25.0/crictl-v1.25.0-linux-amd64.tar.gz -o crictl.tar.gz
+            sudo tar -C /usr/local/bin -xzvf crictl.tar.gz -x crictl
+            sudo chmod +x /usr/local/bin/crictl
+            rm crictl.tar.gz
+        fi
+
+        read -p "是否将此节点作为Kubernetes主节点？(Y/n): " choice
+        if [[ $choice =~ ^[Yy]$ ]]; then
+            # 检测运行时是否为docker
+            runtime=$(crictl info | grep -A 1 '"name": "docker"' | grep -q 'docker' && echo "docker" || true)
+            if [ "$runtime" = "docker" ]; then
+                echo -e "\e[33m检测到Docker作为运行时，需要安装shim-volplugin以支持Kubernetes 1.24+版本\e[0m"
+                sudo curl -L -o /usr/local/bin/shim https://github.com/VolkovYury/shim-volplugin/releases/download/v0.1.0/shim-linux-amd64
+                sudo chmod +x /usr/local/bin/shim
+                echo -e "\e[32mshim-volplugin已安装\e[0m"
+            fi
+            echo -e "\e[34m正在初始化Kubernetes主节点...\e[0m"
+            sudo kubeadm init || {
+                echo -e "\e[31m初始化失败，请检查运行时配置或网络连接\e[0m"
+                exit 1
+            }
+            echo -e "\e[32m主节点初始化成功，请根据提示完成集群配置:\e[0m"
+            echo "运行以下命令以配置kubectl："
+            echo "mkdir -p \$HOME/.kube"
+            echo "sudo cp -i /etc/kubernetes/admin.conf \$HOME/.kube/config"
+            echo "sudo chown \$(id -u):\$(id -g) \$HOME/.kube/config"
+            echo "kubectl apply -f https://github.com/weaveworks/weave/releases/download/v2.8.1/weave-daemonset-k8s.yaml"
+        else
+            echo -e "\e[33m未选择作为主节点，Kubernetes安装完成\e[0m"
+        fi
+    fi
 }
 
 # 修改containerd安装函数，增加仓库配置
