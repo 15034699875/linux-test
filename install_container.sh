@@ -83,6 +83,8 @@ uninstall_kubernetes() {
     if [[ $OS == "centos" || $OS == "rhel" ]]; then
         sudo yum remove -y kubelet kubeadm kubectl
     elif [[ $OS == "ubuntu" ]]; then
+        # 新增取消锁定的步骤
+        sudo apt-mark unhold kubelet kubeadm kubectl
         sudo apt-get purge -y kubelet kubeadm kubectl
     fi
     sudo rm -rf /etc/kubernetes
