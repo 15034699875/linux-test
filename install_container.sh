@@ -369,13 +369,33 @@ install_kubernetes() {
             sudo apt-get install -y containerd.io && sudo apt-get install -y cri-containerd
         elif [[ $runtime == "docker" ]]; then
             echo -e "\e[33mKubernetes 1.24+ 不推荐使用Docker作为运行时，建议改用containerd\e[0m"
+            echo -e "\e[33m检测到Kubernetes 1.24+且使用Docker运行时，正在安装cri-dockerd以确保兼容性...\e[0m"
+
             if [[ $OS == "ubuntu" ]]; then
+                if detect_country; then
+                    docker_repo="https://mirrors.aliyun.com/docker-ce/linux/ubuntu"
+                else
+                    docker_repo="https://download.docker.com/linux/ubuntu"
+                fi
+
+                curl -fsSL "$docker_repo/gpg" | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+                echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] $docker_repo $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+                sudo apt-get update
                 sudo apt-get install -y cri-dockerd
                 sudo systemctl enable --now cri-dockerd
             elif [[ $OS == "centos" ]]; then
-                sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+                echo -e "\e[33m检测到Kubernetes 1.24+且使用Docker运行时，正在安装cri-dockerd以确保兼容性...\e[0m"
+                sudo curl -fsSL https://download.docker.com/linux/centos/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+                sudo sh -c 'echo "[docker]\nname=Docker Repository\nbaseurl=https://download.docker.com/linux/centos/$(rpm -E %centos)/x86_64/stable\nenabled=1\ngpgcheck=1\ngpgkey=https://download.docker.com/linux/centos/gpg" > /etc/yum.repos.d/docker-ce.repo'
+                sudo yum clean all
+                sudo yum makecache
                 sudo yum install -y cri-dockerd
                 sudo systemctl enable --now cri-dockerd
+            fi
+
+            if ! sudo systemctl is-active --quiet cri-dockerd; then
+                echo -e "\e[31mcri-dockerd服务未启动，请检查安装\e[0m"
+                return 1
             fi
         fi
     fi
