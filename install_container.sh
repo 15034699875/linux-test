@@ -321,8 +321,8 @@ install_kubernetes() {
     fi
 
     # 版本选择逻辑（修正版本号格式）
-    versions=("1.29.0" "1.28.0" "1.27.0" "1.26.0" "1.25.0")
-    read -p "是否选择特定版本？(Y/n，默认1.29.0): " choice
+    versions=("1.32.0" "1.31.0" "1.30.0" "1.29.0" "1.28.0")
+    read -p "是否选择特定版本？(Y/n，默认1.32.0): " choice
     if [[ $choice =~ ^[Yy]$ ]]; then
         PS3="请选择Kubernetes版本: "
         select ver in "${versions[@]}"; do
@@ -334,7 +334,7 @@ install_kubernetes() {
             fi
         done
     else
-        k8s_version="v1.29.0"
+        k8s_version="v1.32.0"
     fi
 
     # 安装流程分发
@@ -346,25 +346,19 @@ install_kubernetes() {
         sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates curl gpg
 
         if detect_country; then
-            repo_base="https://mirrors.aliyun.com/kubernetes/apt"
+            repo_base="https://pkgs.k8s.io/core:/stable:/v${k8s_version#v}/deb"
         else
-            repo_base="https://apt.kubernetes.io"
+            repo_base="https://pkgs.k8s.io/core:/stable:/v${k8s_version#v}/deb"
         fi
 
-        curl -fsSL "${repo_base}/apt/doc/apt-key.gpg" | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+        sudo mkdir -p -m 755 /etc/apt/keyrings
+        curl -fsSL "${repo_base}/Release.key" | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
 
-        echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] ${repo_base}/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list > /dev/null
+        echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] ${repo_base}/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list > /dev/null
 
         sudo apt-get update
 
-        # 动态获取可用版本并安装
-        candidate=$(apt-cache madison kubelet | awk -v ver="${k8s_version#v}" '$0 ~ ver {print $3}' | head -1)
-        if [ -z "$candidate" ]; then
-            echo -e "\e[31m未找到指定版本的Kubernetes组件，请检查版本号\e[0m"
-            return 1
-        fi
-
-        sudo apt-get install -y kubelet="$candidate" kubeadm="$candidate" kubectl="$candidate"
+        sudo apt-get install -y kubelet kubeadm kubectl
         sudo apt-mark hold kubelet kubeadm kubectl
 
     else
