@@ -285,87 +285,123 @@ EOF
     fi
 }
 
+# 新增install_kubernetes函数
 install_kubernetes() {
-    # 新增检测逻辑
-    if command -v kubelet &> /dev/null || command -v kubeadm &> /dev/null; then
-        echo -e "\e[33m检测到已安装Kubernetes组件\e[0m"
-        read -p "是否继续安装？(Y/n): " choice
-        if [[ ! $choice =~ ^[Yy]$ ]]; then
-            echo "跳过Kubernetes安装"
-            return
-        fi
+    # 检测容器运行时
+    if ! (command -v docker &>/dev/null || command -v containerd &>/dev/null); then
+        echo -e "\e[31m未检测到容器运行时（Docker或containerd），请先安装容器运行时！\e[0m"
+        return 1
     fi
 
-    if [[ $OS == "centos" || $OS == "rhel" ]]; then
-        echo -e "\e[34m正在CentOS系统上安装Kubernetes...\e[0m"
-        cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
+    # 检测系统并设置仓库
+    case $OS in
+        centos|rhel)
+            # CentOS仓库配置
+            if detect_country; then
+                sudo tee /etc/yum.repos.d/kubernetes.repo <<EOF >/dev/null
 [kubernetes]
 name=Kubernetes
-baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-\$basearch
+baseurl=https://mirrors.aliyun.com/kubernetes/yum/repos/kubernetes-el7-x86_64/
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://mirrors.aliyun.com/kubernetes/yum/doc/yum-key.gpg https://mirrors.aliyun.com/kubernetes/yum/doc/rpm-package-key.gpg
+EOF
+            else
+                sudo tee /etc/yum.repos.d/kubernetes.repo <<EOF >/dev/null
+[kubernetes]
+name=Kubernetes
+baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
 enabled=1
 gpgcheck=1
 repo_gpgcheck=1
 gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
 EOF
-        sudo yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
-    elif [[ $OS == "ubuntu" ]]; then
-        echo -e "\e[34m正在Ubuntu系统上安装Kubernetes...\e[0m"
-        sudo apt-get update && sudo apt-get install -y apt-transport-https
-        curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo tee /etc/apt/keyrings/kubernetes.gpg > /dev/null
-        
-        # 删除所有旧的Kubernetes仓库文件
-        sudo rm -f /etc/apt/sources.list.d/kubernetes*.list
-        
-        # 修改仓库套接字名称为kubernetes-jammy（适配Jammy版本）
-        echo "deb [signed-by=/etc/apt/keyrings/kubernetes.gpg] https://apt.kubernetes.io/ kubernetes-jammy main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
-
-        # 增强仓库验证逻辑，检查仓库是否可用
-        if ! sudo apt-get update 2>&1 | grep -q 'Hit:.*https://apt.kubernetes.io'; then
-            echo -e "\e[31mKubernetes仓库配置失败，请检查网络或仓库名称是否为kubernetes-jammy\e[0m"
+            fi
+            ;;
+        ubuntu)
+            # Ubuntu仓库配置
+            sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates curl
+            curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | sudo gpg --dearmor -o /usr/share/keyrings/kubernetes-apt-keyring.gpg
+            if detect_country; then
+                echo "deb [signed-by=/usr/share/keyrings/kubernetes-apt-keyring.gpg] http://mirrors.aliyun.com/kubernetes/apt/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+            else
+                echo "deb [signed-by=/usr/share/keyrings/kubernetes-apt-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+            fi
+            sudo apt-get update
+            ;;
+        *)
+            echo -e "\e[31m不支持的系统类型：$OS\e[0m"
             return 1
-        fi
+            ;;
+    esac
 
-        sudo apt-get install -y kubelet kubeadm kubectl
-    else
-        echo -e "\e[31m不支持的系统类型\e[0m"
+    # 获取可用版本
+    if [[ $OS == "centos" || $OS == "rhel" ]]; then
+        versions=$(yum list available kubelet --showduplicates | grep -E 'kubelet-[0-9]+\.[0-9]+\.[0-9]+' | awk '{print $2}' | sort -rV | uniq)
+    elif [[ $OS == "ubuntu" ]]; then
+        versions=$(apt-cache madison kubelet | awk '{print $3}' | sort -rV | uniq)
+    fi
+
+    if [[ -z "$versions" ]]; then
+        echo -e "\e[31m无法获取Kubernetes可用版本，请检查网络或仓库配置\e[0m"
         return 1
     fi
-    sudo systemctl enable --now kubelet && echo -e "\e[32mKubernetes组件安装完成\e[0m" || echo -e "\e[31m安装失败，请检查网络\e[0m"
 
-    if [ $? -eq 0 ]; then
-        # 新增crictl安装检测
-        if ! command -v crictl &> /dev/null; then
-            echo "安装crictl用于检测运行时..."
-            sudo curl -L https://github.com/kubernetes-sigs/cri-tools/releases/download/v1.25.0/crictl-v1.25.0-linux-amd64.tar.gz -o crictl.tar.gz
-            sudo tar -C /usr/local/bin -xzvf crictl.tar.gz -x crictl
-            sudo chmod +x /usr/local/bin/crictl
-            rm crictl.tar.gz
-        fi
+    echo -e "\e[34m可用的Kubernetes版本：\e[0m"
+    echo "$versions"
 
-        read -p "是否将此节点作为Kubernetes主节点？(Y/n): " choice
-        if [[ $choice =~ ^[Yy]$ ]]; then
-            # 检测运行时是否为docker
-            runtime=$(crictl info | grep -A 1 '"name": "docker"' | grep -q 'docker' && echo "docker" || true)
-            if [ "$runtime" = "docker" ]; then
-                echo -e "\e[33m检测到Docker作为运行时，需要安装shim-volplugin以支持Kubernetes 1.24+版本\e[0m"
-                sudo curl -L -o /usr/local/bin/shim https://github.com/VolkovYury/shim-volplugin/releases/download/v0.1.0/shim-linux-amd64
-                sudo chmod +x /usr/local/bin/shim
-                echo -e "\e[32mshim-volplugin已安装\e[0m"
+    # 版本选择
+    read -p "是否安装指定版本？(Y/n): " choice
+    if [[ $choice =~ ^[Yy]$ ]]; then
+        PS3="请选择版本："
+        select ver in $versions; do
+            if [[ -n $ver ]]; then
+                version=${ver#kubelet-}
+                break
+            else
+                echo "无效选择"
             fi
-            echo -e "\e[34m正在初始化Kubernetes主节点...\e[0m"
-            sudo kubeadm init || {
-                echo -e "\e[31m初始化失败，请检查运行时配置或网络连接\e[0m"
-                exit 1
-            }
-            echo -e "\e[32m主节点初始化成功，请根据提示完成集群配置:\e[0m"
-            echo "运行以下命令以配置kubectl："
-            echo "mkdir -p \$HOME/.kube"
-            echo "sudo cp -i /etc/kubernetes/admin.conf \$HOME/.kube/config"
-            echo "sudo chown \$(id -u):\$(id -g) \$HOME/.kube/config"
-            echo "kubectl apply -f https://github.com/weaveworks/weave/releases/download/v2.8.1/weave-daemonset-k8s.yaml"
-        else
-            echo -e "\e[33m未选择作为主节点，Kubernetes安装完成\e[0m"
+        done
+    else
+        version=$(echo "$versions" | head -n1 | cut -d: -f1)
+    fi
+
+    # 处理1.24+版本的Runtime Shim问题
+    if [[ $version =~ ^([0-9]+)\.([0-9]+)\. ]]; then
+        major=${BASH_REMATCH[1]}
+        minor=${BASH_REMATCH[2]}
+        if (( major > 1 || (major == 1 && minor >= 24) )); then
+            if command -v docker &>/dev/null; then
+                echo -e "\e[33m警告：Kubernetes 1.24+ 不再支持Docker作为默认Runtime，请使用containerd\e[0m"
+                read -p "是否继续安装？(Y/n): " choice
+                if [[ ! $choice =~ ^[Yy]$ ]]; then
+                    return 1
+                fi
+            fi
         fi
+    fi
+
+    # 安装组件
+    if [[ $OS == "centos" || $OS == "rhel" ]]; then
+        sudo yum install -y kubelet-$version kubeadm-$version kubectl-$version --disableexcludes=kubernetes
+    elif [[ $OS == "ubuntu" ]]; then
+        sudo apt-get install -y kubelet="$version" kubeadm="$version" kubectl="$version"
+    fi
+
+    sudo systemctl enable --now kubelet
+
+    # 主节点初始化
+    read -p "是否配置为集群主节点？(Y/n): " choice
+    if [[ $choice =~ ^[Yy]$ ]]; then
+        echo -e "\e[34m正在初始化主节点...\e[0m"
+        sudo kubeadm init --pod-network-cidr=10.244.0.0/16
+        mkdir -p $HOME/.kube
+        sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+        sudo chown $(id -u):$(id -g) $HOME/.kube/config
+        echo -e "\e[32m主节点初始化完成！请手动安装网络插件（如flannel或calico）\e[0m"
+    else
+        echo -e "\e[32mKubernetes组件已安装完成\e[0m"
     fi
 }
 
