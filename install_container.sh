@@ -326,13 +326,22 @@ install_kubernetes() {
         sudo systemctl enable --now kubelet
     elif [[ $OS == "ubuntu" ]]; then
         # Ubuntu 22.04 安装步骤
-        sudo apt-get update && sudo apt-get install -y apt-transport-https curl
-        curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
-        # 修正仓库配置
-        echo "deb $k8s_url_base kubernetes-$(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+        sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates curl gpg
+        
+        if detect_country; then
+            repo_base="https://mirrors.aliyun.com/kubernetes/apt"
+        else
+            repo_base="https://pkgs.k8s.io"
+        fi
+
+        curl -fsSL "${repo_base}/core:/stable:/v${k8s_version#v}/deb/Release.key" | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+        
+        echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] ${repo_base}/core:/stable:/v${k8s_version#v}/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list > /dev/null
+
         sudo apt-get update
-        # 修正包版本格式
-        sudo apt-get install -y kubelet=$k8s_version-00 kubeadm=$k8s_version-00 kubectl=$k8s_version-00
+        sudo apt-get install -y kubelet kubeadm kubectl
+        sudo apt-mark hold kubelet kubeadm kubectl
+
     else
         echo -e "\e[31m当前系统暂不支持Kubernetes安装\e[0m"
         return 1
