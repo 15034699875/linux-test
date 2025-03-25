@@ -231,7 +231,11 @@ install_docker() {
     elif [[ $OS == "ubuntu" ]]; then
         echo -e "\e[34m正在Ubuntu系统上安装Docker...\e[0m"
         # 修正Docker仓库重复配置问题（删除所有旧Docker仓库文件）
-        sudo rm -f /etc/apt/sources.list.d/docker*.list
+        if [ -e /etc/apt/sources.list.d/docker*.list ]; then
+            sudo rm -f /etc/apt/sources.list.d/docker*.list
+        else
+            echo "未找到旧的Docker仓库文件，跳过删除"
+        fi
         
         # 修改仓库配置方式
         sudo apt-get update
@@ -372,15 +376,21 @@ install_kubernetes() {
             echo -e "\e[33m检测到Kubernetes 1.24+且使用Docker运行时，正在安装cri-dockerd以确保兼容性...\e[0m"
 
             if [[ $OS == "ubuntu" ]]; then
-                wget https://github.com/Mirantis/cri-dockerd/releases/download/v0.3.16/cri-dockerd_0.3.16.3-0.ubuntu-jammy_amd64.deb 
-                apt-get install cri-dockerd_0.3.16.3-0.ubuntu-jammy_amd64.deb 
-                systemctl start cri-docker
-                sudo systemctl enable --now cri-dockerd
+                # 安装cri-dockerd部分
+                if ! command -v cri-dockerd &> /dev/null; then
+                    echo -e "\e[33m检测到Kubernetes 1.24+且使用Docker运行时，正在安装cri-dockerd以确保兼容性...\e[0m"
+                    wget https://github.com/Mirantis/cri-dockerd/releases/download/v0.3.16/cri-dockerd_0.3.16.3-0.ubuntu-jammy_amd64.deb 
+                    sudo apt-get install ./cri-dockerd_0.3.16.3-0.ubuntu-jammy_amd64.deb 
+                    sudo systemctl start cri-dockerd
+                    sudo systemctl enable --now cri-dockerd
+                else
+                    echo "检测到cri-dockerd已安装，跳过安装步骤"
+                fi
             elif [[ $OS == "centos" ]]; then
                 echo -e "\e[33m检测到Kubernetes 1.24+且使用Docker运行时，正在安装cri-dockerd以确保兼容性...\e[0m"
                 wget https://github.com/Mirantis/cri-dockerd/releases/download/v0.3.16/cri-dockerd-0.3.16-3.fc35.x86_64.rpm 
-                yum localinstall -y cri-dockerd-0.3.16-3.fc35.x86_64.rpm 
-                systemctl start cri-docker
+                sudo yum localinstall -y cri-dockerd-0.3.16-3.fc35.x86_64.rpm 
+                sudo systemctl start cri-dockerd
                 sudo systemctl enable --now cri-dockerd
             fi
 
@@ -394,7 +404,11 @@ install_kubernetes() {
     # 主节点配置
     read -p "是否配置为主节点？(Y/n): " is_master
     if [[ $is_master =~ ^[Yy]$ ]]; then
-        sudo kubeadm init --pod-network-cidr=10.244.0.0/16
+        cmd_params="--pod-network-cidr=10.244.0.0/16"
+        if [[ $runtime == "docker" && $k8s_version =~ ^v(1\.(2[4-9]|[3-9][0-9])|2) ]]; then
+            cmd_params+=" --cri-socket unix:///var/run/cri-dockerd.sock"
+        fi
+        sudo kubeadm init $cmd_params
         if [ $? -ne 0 ]; then
             echo -e "\e[31m主节点初始化失败，请检查容器运行时配置\e[0m"
             return 1
@@ -426,6 +440,17 @@ install_containerd() {
         sudo yum install -y yum-utils
         sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
         # 安装兼容Kubernetes 1.29+的containerd版本（如1.7.8+）
+        if rpm -q containerd.io &> /dev/null; then
+            installed_version=$(rpm -q containerd.io --queryformat '%{VERSION}')
+            if [[ $installed_version == "1.7.8" ]]; then
+                echo -e "\e[33m检测到已安装兼容版本containerd.io-1.7.8\e[0m"
+                read -p "是否要替换现有安装？(Y/n): " choice
+                if [[ ! $choice =~ ^[Yy]$ ]]; then
+                    echo "跳过containerd安装"
+                    return
+                fi
+            fi
+        fi
         sudo yum install -y containerd.io-1.7.8
     elif [[ $OS == "ubuntu" ]]; then
         echo -e "\e[34m正在Ubuntu系统上安装containerd...\e[0m"
@@ -438,6 +463,17 @@ install_containerd() {
         $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/containerd.list > /dev/null
         sudo apt-get update
         # 安装兼容版本（如1.7.8+）
+        if dpkg -l | grep -qw containerd.io; then
+            installed_version=$(dpkg -l | grep containerd.io | awk '{print $3}')
+            if [[ $installed_version == "1.7.8-1" ]]; then
+                echo -e "\e[33m检测到已安装兼容版本containerd.io=1.7.8-1\e[0m"
+                read -p "是否要替换现有安装？(Y/n): " choice
+                if [[ ! $choice =~ ^[Yy]$ ]]; then
+                    echo "跳过containerd安装"
+                    return
+                fi
+            fi
+        fi
         sudo apt-get install -y containerd.io=1.7.8-1
     else
         echo -e "\e[31m不支持的系统类型\e[0m"
