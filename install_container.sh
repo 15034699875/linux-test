@@ -285,7 +285,7 @@ EOF
     fi
 }
 
-# 新增Kubernetes安装函数
+# 修改Kubernetes安装函数
 install_kubernetes() {
     echo -e "\e[34m正在安装Kubernetes...\e[0m"
 
@@ -297,14 +297,14 @@ install_kubernetes() {
 
     # 根据地理位置设置源
     if detect_country; then
-        k8s_url_base="https://mirrors.aliyun.com/kubernetes"
+        k8s_url_base="https://mirrors.aliyun.com/kubernetes/apt"
     else
-        k8s_url_base="https://storage.googleapis.com/kubernetes-release"
+        k8s_url_base="https://apt.kubernetes.io"
     fi
 
-    # 版本选择逻辑
-    versions=("1.32" "1.31" "1.30" "1.29" "1.28" "1.27" "1.26" "1.25" "1.24" "1.23" "1.22" "1.21" "1.20" "1.19" "1.18")
-    read -p "是否选择特定版本？(Y/n，默认1.32): " choice
+    # 版本选择逻辑（修正版本号范围）
+    versions=("1.29" "1.28" "1.27" "1.26" "1.25" "1.24" "1.23" "1.22" "1.21" "1.20" "1.19" "1.18")
+    read -p "是否选择特定版本？(Y/n，默认1.29): " choice
     if [[ $choice =~ ^[Yy]$ ]]; then
         PS3="请选择Kubernetes版本: "
         select ver in "${versions[@]}"; do
@@ -316,7 +316,7 @@ install_kubernetes() {
             fi
         done
     else
-        k8s_version="v1.32"
+        k8s_version="v1.29"
     fi
 
     # 安装流程分发
@@ -328,19 +328,27 @@ install_kubernetes() {
         # Ubuntu 22.04 安装步骤
         sudo apt-get update && sudo apt-get install -y apt-transport-https curl
         curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
-        echo "deb $k8s_url_base/apt/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+        # 修正仓库配置
+        echo "deb $k8s_url_base kubernetes-$(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
         sudo apt-get update
+        # 修正包版本格式
         sudo apt-get install -y kubelet=$k8s_version-00 kubeadm=$k8s_version-00 kubectl=$k8s_version-00
     else
         echo -e "\e[31m当前系统暂不支持Kubernetes安装\e[0m"
         return 1
     fi
 
+    # 安装验证
+    if ! command -v kubeadm &> /dev/null; then
+        echo -e "\e[31mKubernetes组件安装失败，请检查仓库配置和版本号\e[0m"
+        return 1
+    fi
+
     # 处理1.24+版本的CRI适配
     if [[ $k8s_version =~ ^v(1\.(2[4-9]|[3-9][0-9])|2) ]]; then
         if command -v containerd &> /dev/null; then
-            # 需要安装shim（此处可能需要根据具体版本调整）
-            sudo apt-get install -y containerd.io # 示例安装（实际需根据版本调整）
+            # 安装containerd-shim-runC-v2（针对1.24+）
+            sudo apt-get install -y containerd.io && sudo apt-get install -y cri-containerd
         elif command -v docker &> /dev/null; then
             echo -e "\e[33mKubernetes 1.24+ 不推荐使用Docker作为运行时，建议改用containerd\e[0m"
         fi
@@ -350,6 +358,10 @@ install_kubernetes() {
     read -p "是否配置为主节点？(Y/n): " is_master
     if [[ $is_master =~ ^[Yy]$ ]]; then
         sudo kubeadm init --pod-network-cidr=10.244.0.0/16
+        if [ $? -ne 0 ]; then
+            echo -e "\e[31m主节点初始化失败，请检查容器运行时配置\e[0m"
+            return 1
+        fi
         mkdir -p $HOME/.kube
         sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
         sudo chown $(id -u):$(id -g) $HOME/.kube/config
