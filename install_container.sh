@@ -394,23 +394,32 @@ install_containerd() {
 
     if [[ $OS == "centos" || $OS == "rhel" ]]; then
         echo -e "\e[34m正在CentOS系统上安装containerd...\e[0m"
-        sudo yum install -y containerd.io
+        # 添加containerd仓库并指定版本
+        sudo yum install -y yum-utils
+        sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+        # 安装兼容Kubernetes 1.29+的containerd版本（如1.7.8+）
+        sudo yum install -y containerd.io-1.7.8
     elif [[ $OS == "ubuntu" ]]; then
         echo -e "\e[34m正在Ubuntu系统上安装containerd...\e[0m"
         sudo apt-get update && sudo apt-get install -y curl gnupg
-        # 添加containerd官方仓库
+        # 添加containerd官方仓库并安装指定版本
         sudo mkdir -m 0755 -p /etc/apt/keyrings
         curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/containerd.gpg
         echo \
         "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/containerd.gpg] https://download.docker.com/linux/ubuntu \
         $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/containerd.list > /dev/null
         sudo apt-get update
-        sudo apt-get install -y containerd.io
+        # 安装兼容版本（如1.7.8+）
+        sudo apt-get install -y containerd.io=1.7.8-1
     else
         echo -e "\e[31m不支持的系统类型\e[0m"
         return 1
     fi
-    sudo systemctl enable --now containerd && echo -e "\e[32mcontainerd安装完成\e[0m" || echo -e "\e[31m安装失败，请检查网络\e[0m"
+    # 配置CRI插件
+    sudo mkdir -p /etc/containerd
+    sudo containerd config default | sudo tee /etc/containerd/config.toml > /dev/null
+    sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+    sudo systemctl restart containerd
 
     # 安装完成后替换镜像源
     if detect_country; then
