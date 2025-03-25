@@ -345,20 +345,17 @@ install_kubernetes() {
     elif [[ $OS == "ubuntu" ]]; then
         sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates curl gpg
 
-        if detect_country; then
-            repo_base="https://pkgs.k8s.io/core:/stable:/v${k8s_version#v}/deb"
-        else
-            repo_base="https://pkgs.k8s.io/core:/stable:/v${k8s_version#v}/deb"
-        fi
-
+        # 修正仓库配置逻辑
         sudo mkdir -p -m 755 /etc/apt/keyrings
-        curl -fsSL "${repo_base}/Release.key" | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+        # 使用官方推荐的密钥获取方式
+        sudo curl -fsSLo /etc/apt/keyrings/kubernetes-archive-keyring.gpg https://packages.cloud.google.com/apt/doc/apt-key.gpg
 
-        echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] ${repo_base}/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list > /dev/null
+        echo "deb [signed-by=/etc/apt/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list > /dev/null
 
         sudo apt-get update
 
-        sudo apt-get install -y kubelet kubeadm kubectl
+        # 使用精准版本安装
+        sudo apt-get install -y kubelet=$k8s_version-00 kubeadm=$k8s_version-00 kubectl=$k8s_version-00
         sudo apt-mark hold kubelet kubeadm kubectl
 
     else
