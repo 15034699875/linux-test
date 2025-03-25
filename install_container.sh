@@ -312,33 +312,16 @@ EOF
         echo -e "\e[34m正在Ubuntu系统上安装Kubernetes...\e[0m"
         sudo apt-get update && sudo apt-get install -y apt-transport-https
         curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo tee /etc/apt/keyrings/kubernetes.gpg > /dev/null
+        
         # 删除所有旧的Kubernetes仓库文件
         sudo rm -f /etc/apt/sources.list.d/kubernetes*.list
-        # 修改仓库套接字名称为kubernetes-xenial
-        echo "deb [signed-by=/etc/apt/keyrings/kubernetes.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
-
-        # 删除所有旧的Kubernetes仓库文件（原代码仅删除部分，需增强清理）
-        sudo rm -f /etc/apt/sources.list.d/kubernetes*.list
+        
+        # 修改仓库套接字名称为kubernetes-jammy（适配Jammy版本）
+        echo "deb [signed-by=/etc/apt/keyrings/kubernetes.gpg] https://apt.kubernetes.io/ kubernetes-jammy main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
 
         # 增强仓库验证逻辑，检查仓库是否可用
-        if ! sudo apt-get update 2>&1 | grep -q 'https://apt.kubernetes.io .*Hit'; then
-            echo -e "\e[31mKubernetes仓库配置失败，请检查仓库名称是否为kubernetes-xenial\e[0m"
-            return 1
-        fi
-
-        # 彻底清理Docker旧仓库文件（修复重复配置问题）
-        sudo rm -f /etc/apt/sources.list.d/docker*
-
-        # 新增仓库配置验证逻辑
-        if ! sudo apt-get update 2>&1 | grep -q 'Hit:1 https://apt.kubernetes.io'; then
-            echo -e "\e[31mKubernetes仓库配置失败，请检查网络或仓库名称是否为kubernetes-ubuntu\e[0m"
-            return 1
-        fi
-
-        # 新增Docker仓库配置后的验证步骤
-        sudo apt-get update > /dev/null
-        if ! apt-cache policy docker-ce | grep -q 'Candidate:'; then
-            echo -e "\e[31mDocker仓库配置异常，请检查网络或仓库文件\e[0m"
+        if ! sudo apt-get update 2>&1 | grep -q 'Hit:.*https://apt.kubernetes.io'; then
+            echo -e "\e[31mKubernetes仓库配置失败，请检查网络或仓库名称是否为kubernetes-jammy\e[0m"
             return 1
         fi
 
