@@ -381,8 +381,8 @@ install_kubernetes() {
                     echo -e "\e[33m检测到Kubernetes 1.24+且使用Docker运行时，正在安装cri-dockerd以确保兼容性...\e[0m"
                     wget https://github.com/Mirantis/cri-dockerd/releases/download/v0.3.16/cri-dockerd_0.3.16.3-0.ubuntu-jammy_amd64.deb 
                     sudo apt-get install ./cri-dockerd_0.3.16.3-0.ubuntu-jammy_amd64.deb 
-                    sudo systemctl start cri-dockerd
-                    sudo systemctl enable --now cri-dockerd
+                    sudo systemctl start cri-docker
+                    sudo systemctl enable --now cri-docker
                 else
                     echo "检测到cri-dockerd已安装，跳过安装步骤"
                 fi
@@ -390,11 +390,11 @@ install_kubernetes() {
                 echo -e "\e[33m检测到Kubernetes 1.24+且使用Docker运行时，正在安装cri-dockerd以确保兼容性...\e[0m"
                 wget https://github.com/Mirantis/cri-dockerd/releases/download/v0.3.16/cri-dockerd-0.3.16-3.fc35.x86_64.rpm 
                 sudo yum localinstall -y cri-dockerd-0.3.16-3.fc35.x86_64.rpm 
-                sudo systemctl start cri-dockerd
-                sudo systemctl enable --now cri-dockerd
+                sudo systemctl start cri-docker
+                sudo systemctl enable --now cri-docker
             fi
 
-            if ! sudo systemctl is-active --quiet cri-dockerd; then
+            if ! sudo systemctl is-active --quiet cri-docker; then
                 echo -e "\e[31mcri-dockerd服务未启动，请检查安装\e[0m"
                 return 1
             fi
