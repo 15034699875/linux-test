@@ -372,24 +372,15 @@ install_kubernetes() {
             echo -e "\e[33m检测到Kubernetes 1.24+且使用Docker运行时，正在安装cri-dockerd以确保兼容性...\e[0m"
 
             if [[ $OS == "ubuntu" ]]; then
-                if detect_country; then
-                    docker_repo="https://mirrors.aliyun.com/docker-ce/linux/ubuntu"
-                else
-                    docker_repo="https://download.docker.com/linux/ubuntu"
-                fi
-
-                curl -fsSL "$docker_repo/gpg" | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-                echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] $docker_repo $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-                sudo apt-get update
-                sudo apt-get install -y cri-dockerd
+                wget https://github.com/Mirantis/cri-dockerd/releases/download/v0.3.16/cri-dockerd_0.3.16.3-0.ubuntu-jammy_amd64.deb 
+                apt-get install cri-dockerd_0.3.16.3-0.ubuntu-jammy_amd64.deb 
+                systemctl start cri-docker
                 sudo systemctl enable --now cri-dockerd
             elif [[ $OS == "centos" ]]; then
                 echo -e "\e[33m检测到Kubernetes 1.24+且使用Docker运行时，正在安装cri-dockerd以确保兼容性...\e[0m"
-                sudo curl -fsSL https://download.docker.com/linux/centos/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-                sudo sh -c 'echo "[docker]\nname=Docker Repository\nbaseurl=https://download.docker.com/linux/centos/$(rpm -E %centos)/x86_64/stable\nenabled=1\ngpgcheck=1\ngpgkey=https://download.docker.com/linux/centos/gpg" > /etc/yum.repos.d/docker-ce.repo'
-                sudo yum clean all
-                sudo yum makecache
-                sudo yum install -y cri-dockerd
+                wget https://github.com/Mirantis/cri-dockerd/releases/download/v0.3.16/cri-dockerd-0.3.16-3.fc35.x86_64.rpm 
+                yum localinstall -y cri-dockerd-0.3.16-3.fc35.x86_64.rpm 
+                systemctl start cri-docker
                 sudo systemctl enable --now cri-dockerd
             fi
 
