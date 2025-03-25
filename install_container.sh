@@ -295,6 +295,16 @@ install_kubernetes() {
         return 1
     fi
 
+    # 新增运行时优先级检测（Docker优先）
+    if command -v docker &>/dev/null; then
+        runtime="docker"
+    elif command -v containerd &>/dev/null; then
+        runtime="containerd"
+    else
+        runtime="none"
+    fi
+    echo -e "\e[34m检测到容器运行时：$runtime\e[0m"
+
     # 根据地理位置设置源
     if detect_country; then
         k8s_url_base="https://mirrors.aliyun.com/kubernetes/apt"
@@ -355,11 +365,18 @@ install_kubernetes() {
 
     # 处理1.24+版本的CRI适配
     if [[ $k8s_version =~ ^v(1\.(2[4-9]|[3-9][0-9])|2) ]]; then
-        if command -v containerd &> /dev/null; then
-            # 安装containerd-shim-runC-v2（针对1.24+）
+        if [[ $runtime == "containerd" ]]; then
             sudo apt-get install -y containerd.io && sudo apt-get install -y cri-containerd
-        elif command -v docker &> /dev/null; then
+        elif [[ $runtime == "docker" ]]; then
             echo -e "\e[33mKubernetes 1.24+ 不推荐使用Docker作为运行时，建议改用containerd\e[0m"
+            if [[ $OS == "ubuntu" ]]; then
+                sudo apt-get install -y cri-dockerd
+                sudo systemctl enable --now cri-dockerd
+            elif [[ $OS == "centos" ]]; then
+                sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+                sudo yum install -y cri-dockerd
+                sudo systemctl enable --now cri-dockerd
+            fi
         fi
     fi
 
