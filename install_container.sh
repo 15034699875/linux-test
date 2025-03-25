@@ -229,13 +229,11 @@ install_docker() {
             sudo yum install -y docker-ce docker-ce-cli containerd.io
         fi
     elif [[ $OS == "ubuntu" ]]; then
-        echo -e "\e[34m正在Ubuntu系统上安装Docker...\e[0m"
-        # 修正Docker仓库重复配置问题（删除所有旧Docker仓库文件）
-        sudo rm -f /etc/apt/sources.list.d/docker*.list
-        
-        # 修改仓库配置方式
-        sudo apt-get update
-        sudo apt-get install -y ca-certificates curl
+        # 新增：备份现有源
+        sudo mv /etc/apt/sources.list.d /etc/apt/sources.list.d.bak
+        sudo mkdir -p /etc/apt/sources.list.d
+
+        sudo apt-get update && sudo apt-get install -y ca-certificates curl
         curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
         echo \
         "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \
@@ -264,6 +262,10 @@ install_docker() {
         else
             sudo apt-get install -y docker-ce docker-ce-cli containerd.io
         fi
+
+        # 新增：恢复备份源
+        sudo rm -rf /etc/apt/sources.list.d
+        sudo mv /etc/apt/sources.list.d.bak /etc/apt/sources.list.d
     else
         echo -e "\e[31m不支持的系统类型\e[0m"
         return 1
@@ -321,12 +323,15 @@ EOF
             ;;
         ubuntu)
             # Ubuntu仓库配置
+            sudo mv /etc/apt/sources.list.d /etc/apt/sources.list.d.bak  # 新增：备份现有源
+            sudo mkdir -p /etc/apt/sources.list.d  # 新增：创建空目录
             sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates curl
             curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | sudo gpg --dearmor -o /usr/share/keyrings/kubernetes-apt-keyring.gpg
+            codename=$(lsb_release -cs)  # 动态获取系统代号
             if detect_country; then
-                echo "deb [signed-by=/usr/share/keyrings/kubernetes-apt-keyring.gpg] http://mirrors.aliyun.com/kubernetes/apt/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+                echo "deb [signed-by=/usr/share/keyrings/kubernetes-apt-keyring.gpg] http://mirrors.aliyun.com/kubernetes/apt/ kubernetes-$codename main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
             else
-                echo "deb [signed-by=/usr/share/keyrings/kubernetes-apt-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+                echo "deb [signed-by=/usr/share/keyrings/kubernetes-apt-keyring.gpg] https://apt.kubernetes.io/ kubernetes-$codename main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
             fi
             sudo apt-get update
             ;;
