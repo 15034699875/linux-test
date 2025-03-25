@@ -229,11 +229,13 @@ install_docker() {
             sudo yum install -y docker-ce docker-ce-cli containerd.io
         fi
     elif [[ $OS == "ubuntu" ]]; then
-        # 新增：备份现有源
-        sudo mv /etc/apt/sources.list.d /etc/apt/sources.list.d.bak
-        sudo mkdir -p /etc/apt/sources.list.d
-
-        sudo apt-get update && sudo apt-get install -y ca-certificates curl
+        echo -e "\e[34m正在Ubuntu系统上安装Docker...\e[0m"
+        # 修正Docker仓库重复配置问题（删除所有旧Docker仓库文件）
+        sudo rm -f /etc/apt/sources.list.d/docker*.list
+        
+        # 修改仓库配置方式
+        sudo apt-get update
+        sudo apt-get install -y ca-certificates curl
         curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
         echo \
         "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \
@@ -262,10 +264,6 @@ install_docker() {
         else
             sudo apt-get install -y docker-ce docker-ce-cli containerd.io
         fi
-
-        # 新增：恢复备份源
-        sudo rm -rf /etc/apt/sources.list.d
-        sudo mv /etc/apt/sources.list.d.bak /etc/apt/sources.list.d
     else
         echo -e "\e[31m不支持的系统类型\e[0m"
         return 1
@@ -287,126 +285,77 @@ EOF
     fi
 }
 
-# 新增install_kubernetes函数
+# 新增Kubernetes安装函数
 install_kubernetes() {
+    echo -e "\e[34m正在安装Kubernetes...\e[0m"
+
     # 检测容器运行时
-    if ! (command -v docker &>/dev/null || command -v containerd &>/dev/null); then
-        echo -e "\e[31m未检测到容器运行时（Docker或containerd），请先安装容器运行时！\e[0m"
+    if ! (command -v docker &> /dev/null || command -v containerd &> /dev/null); then
+        echo -e "\e[31m未检测到容器运行时（docker或containerd），请先安装！\e[0m"
         return 1
     fi
 
-    # 检测系统并设置仓库
-    case $OS in
-        centos|rhel)
-            # CentOS仓库配置
-            if detect_country; then
-                sudo tee /etc/yum.repos.d/kubernetes.repo <<EOF >/dev/null
-[kubernetes]
-name=Kubernetes
-baseurl=https://mirrors.aliyun.com/kubernetes/yum/repos/kubernetes-el7-x86_64/
-enabled=1
-gpgcheck=1
-repo_gpgcheck=1
-gpgkey=https://mirrors.aliyun.com/kubernetes/yum/doc/yum-key.gpg https://mirrors.aliyun.com/kubernetes/yum/doc/rpm-package-key.gpg
-EOF
-            else
-                sudo tee /etc/yum.repos.d/kubernetes.repo <<EOF >/dev/null
-[kubernetes]
-name=Kubernetes
-baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
-enabled=1
-gpgcheck=1
-repo_gpgcheck=1
-gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
-EOF
-            fi
-            ;;
-        ubuntu)
-            # Ubuntu仓库配置
-            sudo mv /etc/apt/sources.list.d /etc/apt/sources.list.d.bak  # 新增：备份现有源
-            sudo mkdir -p /etc/apt/sources.list.d  # 新增：创建空目录
-            sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates curl
-            curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | sudo gpg --dearmor -o /usr/share/keyrings/kubernetes-apt-keyring.gpg
-            codename=$(lsb_release -cs)  # 动态获取系统代号
-            if detect_country; then
-                echo "deb [signed-by=/usr/share/keyrings/kubernetes-apt-keyring.gpg] http://mirrors.aliyun.com/kubernetes/apt/ kubernetes-$codename main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
-            else
-                echo "deb [signed-by=/usr/share/keyrings/kubernetes-apt-keyring.gpg] https://apt.kubernetes.io/ kubernetes-$codename main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
-            fi
-            sudo apt-get update
-            ;;
-        *)
-            echo -e "\e[31m不支持的系统类型：$OS\e[0m"
-            return 1
-            ;;
-    esac
-
-    # 获取可用版本
-    if [[ $OS == "centos" || $OS == "rhel" ]]; then
-        versions=$(yum list available kubelet --showduplicates | grep -E 'kubelet-[0-9]+\.[0-9]+\.[0-9]+' | awk '{print $2}' | sort -rV | uniq)
-    elif [[ $OS == "ubuntu" ]]; then
-        versions=$(apt-cache madison kubelet | awk '{print $3}' | sort -rV | uniq)
+    # 根据地理位置设置源
+    if detect_country; then
+        k8s_url_base="https://mirrors.aliyun.com/kubernetes"
+    else
+        k8s_url_base="https://storage.googleapis.com/kubernetes-release"
     fi
 
-    if [[ -z "$versions" ]]; then
-        echo -e "\e[31m无法获取Kubernetes可用版本，请检查网络或仓库配置\e[0m"
-        return 1
-    fi
-
-    echo -e "\e[34m可用的Kubernetes版本：\e[0m"
-    echo "$versions"
-
-    # 版本选择
-    read -p "是否安装指定版本？(Y/n): " choice
+    # 版本选择逻辑
+    versions=("1.32" "1.31" "1.30" "1.29" "1.28" "1.27" "1.26" "1.25" "1.24" "1.23" "1.22" "1.21" "1.20" "1.19" "1.18")
+    read -p "是否选择特定版本？(Y/n，默认1.32): " choice
     if [[ $choice =~ ^[Yy]$ ]]; then
-        PS3="请选择版本："
-        select ver in $versions; do
-            if [[ -n $ver ]]; then
-                version=${ver#kubelet-}
+        PS3="请选择Kubernetes版本: "
+        select ver in "${versions[@]}"; do
+            if [ -n "$ver" ]; then
+                k8s_version="v$ver"
                 break
             else
-                echo "无效选择"
+                echo "无效选择，请重新选择"
             fi
         done
     else
-        version=$(echo "$versions" | head -n1 | cut -d: -f1)
+        k8s_version="v1.32"
     fi
 
-    # 处理1.24+版本的Runtime Shim问题
-    if [[ $version =~ ^([0-9]+)\.([0-9]+)\. ]]; then
-        major=${BASH_REMATCH[1]}
-        minor=${BASH_REMATCH[2]}
-        if (( major > 1 || (major == 1 && minor >= 24) )); then
-            if command -v docker &>/dev/null; then
-                echo -e "\e[33m警告：Kubernetes 1.24+ 不再支持Docker作为默认Runtime，请使用containerd\e[0m"
-                read -p "是否继续安装？(Y/n): " choice
-                if [[ ! $choice =~ ^[Yy]$ ]]; then
-                    return 1
-                fi
-            fi
+    # 安装流程分发
+    if [[ $OS == "centos" ]]; then
+        # CentOS 7 安装步骤
+        sudo yum install -y kubelet-$k8s_version kubeadm-$k8s_version kubectl-$k8s_version --nobest
+        sudo systemctl enable --now kubelet
+    elif [[ $OS == "ubuntu" ]]; then
+        # Ubuntu 22.04 安装步骤
+        sudo apt-get update && sudo apt-get install -y apt-transport-https curl
+        curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+        echo "deb $k8s_url_base/apt/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+        sudo apt-get update
+        sudo apt-get install -y kubelet=$k8s_version-00 kubeadm=$k8s_version-00 kubectl=$k8s_version-00
+    else
+        echo -e "\e[31m当前系统暂不支持Kubernetes安装\e[0m"
+        return 1
+    fi
+
+    # 处理1.24+版本的CRI适配
+    if [[ $k8s_version =~ ^v(1\.(2[4-9]|[3-9][0-9])|2) ]]; then
+        if command -v containerd &> /dev/null; then
+            # 需要安装shim（此处可能需要根据具体版本调整）
+            sudo apt-get install -y containerd.io # 示例安装（实际需根据版本调整）
+        elif command -v docker &> /dev/null; then
+            echo -e "\e[33mKubernetes 1.24+ 不推荐使用Docker作为运行时，建议改用containerd\e[0m"
         fi
     fi
 
-    # 安装组件
-    if [[ $OS == "centos" || $OS == "rhel" ]]; then
-        sudo yum install -y kubelet-$version kubeadm-$version kubectl-$version --disableexcludes=kubernetes
-    elif [[ $OS == "ubuntu" ]]; then
-        sudo apt-get install -y kubelet="$version" kubeadm="$version" kubectl="$version"
-    fi
-
-    sudo systemctl enable --now kubelet
-
-    # 主节点初始化
-    read -p "是否配置为集群主节点？(Y/n): " choice
-    if [[ $choice =~ ^[Yy]$ ]]; then
-        echo -e "\e[34m正在初始化主节点...\e[0m"
+    # 主节点配置
+    read -p "是否配置为主节点？(Y/n): " is_master
+    if [[ $is_master =~ ^[Yy]$ ]]; then
         sudo kubeadm init --pod-network-cidr=10.244.0.0/16
         mkdir -p $HOME/.kube
         sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
         sudo chown $(id -u):$(id -g) $HOME/.kube/config
-        echo -e "\e[32m主节点初始化完成！请手动安装网络插件（如flannel或calico）\e[0m"
+        echo -e "\e[32m主节点初始化完成，执行 'kubectl get nodes' 验证状态\e[0m"
     else
-        echo -e "\e[32mKubernetes组件已安装完成\e[0m"
+        echo -e "\e[32mKubernetes组件已安装\e[0m"
     fi
 }
 
