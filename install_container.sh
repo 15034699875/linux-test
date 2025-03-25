@@ -78,6 +78,7 @@ uninstall_docker() {
     echo -e "\e[32mDocker已成功卸载\e[0m"
 }
 
+# 新增卸载etcd目录的步骤
 uninstall_kubernetes() {
     echo -e "\e[34m正在卸载Kubernetes组件...\e[0m"
     if [[ $OS == "centos" || $OS == "rhel" ]]; then
@@ -87,7 +88,8 @@ uninstall_kubernetes() {
         sudo apt-mark unhold kubelet kubeadm kubectl
         sudo apt-get purge -y kubelet kubeadm kubectl
     fi
-    sudo rm -rf /etc/kubernetes
+    # 删除etcd残留目录
+    sudo rm -rf /etc/kubernetes /var/lib/etcd
     echo -e "\e[32mKubernetes组件已成功卸载\e[0m"
 }
 
@@ -355,7 +357,7 @@ install_kubernetes() {
         echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] ${repo_base}/core:/stable:/v${k8s_version#v}/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list > /dev/null
 
         sudo apt-get update
-        sudo apt-get install -y kubelet kubeadm kubectl
+        sudo apt-get install -y kubelet="$k8s_version" kubeadm="$k8s_version" kubectl="$k8s_version"
         sudo apt-mark hold kubelet kubeadm kubectl
 
     else
@@ -406,6 +408,18 @@ install_kubernetes() {
     # 主节点配置
     read -p "是否配置为主节点？(Y/n): " is_master
     if [[ $is_master =~ ^[Yy]$ ]]; then
+        # 新增etcd目录检查
+        if [ -d "/var/lib/etcd" ]; then
+            echo -e "\e[31m检测到/var/lib/etcd目录非空，可能导致初始化失败\e[0m"
+            read -p "是否删除该目录？(Y/n): " choice
+            if [[ $choice =~ ^[Yy]$ ]]; then
+                sudo rm -rf /var/lib/etcd
+            else
+                echo "请手动清理后重试"
+                return 1
+            fi
+        fi
+
         cmd_params="--pod-network-cidr=10.244.0.0/16"
         if [[ $runtime == "docker" && $k8s_version =~ ^v(1\.(2[4-9]|[3-9][0-9])|2) ]]; then
             cmd_params+=" --cri-socket unix:///var/run/cri-dockerd.sock"
